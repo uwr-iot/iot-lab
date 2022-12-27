@@ -1,0 +1,15 @@
+# project
+/build*
+.vscode/*.log
+
+# ESP IDF
+/esp-idf-v*
+/core
+/sdkconfig.old
+
+# vscode
+/.vscode/*.log
+
+# python
+*.pyc
+
