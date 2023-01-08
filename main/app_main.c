@@ -3,6 +3,7 @@
 
 #include <esp_nimble_hci.h>
 #include <driver/gpio.h>
+#include <driver/i2c.h>
 
 #include <nimble/nimble_port.h>
 #include <nimble/nimble_port_freertos.h>
@@ -12,53 +13,87 @@
 #include <services/gap/ble_svc_gap.h>
 #include <services/gatt/ble_svc_gatt.h>
 
-// Links:
-// - https://mynewt.apache.org/latest/tutorials/ble/bleprph/bleprph-sections/bleprph-adv.html
-// - file://esp-idf-v4.4.2/examples/peripherals/gpio/generic_gpio/main/gpio_example_main.c
-// - file://esp-idf-v4.4.2/components/esp_hw_support/include/esp_random.h
-// - file://esp-idf-v4.4.2/examples/bluetooth/nimble/blehr/main/gatt_svr.c
+
+// BLE specification: Assigned Numbers
+// link: https://btprodspecificationrefs.blob.core.windows.net/assigned-numbers/Assigned%20Number%20Types/Assigned%20Numbers.pdf
+//
+// This is a regularly updated document listing assigned numbers, codes, and
+// identifiers in the Bluetooth specifications.
+
+// BLE specification: GATT Specification Supplement 5
+// link: https://www.bluetooth.org/DocMan/handlers/DownloadDoc.ashx?doc_id=524815
+//
+// This specification contains the normative definitions for all GATT characteristics and
+// characteristic descriptors, with the exception of those defined in the Bluetooth Core Specification
+// or in Bluetooth Service specifications.
+
+// ESP-IDF
+// I2C documentation: https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-reference/peripherals/i2c.html
+// I2C examples: esp-idf-v4.4.2/examples/peripherals/i2c/i2c_simple
+// BLE documentation: https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-reference/bluetooth/nimble/index.html
+// BLE examples: esp-idf-v4.4.2/examples/bluetooth/nimble
+
+// AHT20 sensor
+// website: http://www.aosong.com/en/products-32.html
+// documentation: https://files.seeedstudio.com/wiki/Grove-AHT20_I2C_Industrial_Grade_Temperature_and_Humidity_Sensor/AHT20-datasheet-2020-4-16.pdf
+// I2C example: esp-idf-v4.4.2/examples/peripherals/i2c/i2c_simple/main/i2c_simple_main.c
+// 3rdParty library: https://github.com/adafruit/Adafruit_AHTX0
+
+// Tools
+// Saleae: https://www.saleae.com
 
 
-// Heart-rate BLE identifiers
-#define GATT_HRS_UUID                           0x180D
-#define GATT_HRS_MEASUREMENT_UUID               0x2A37
-#define GATT_HRS_BODY_SENSOR_LOC_UUID           0x2A38
+// Hardware configuration
+#define LED_GPIO_PIN                            GPIO_NUM_1
+
+#define I2C_PORT_NUMBER                         I2C_NUM_0
+#define I2C_CLK_FREQUENCY                       100000
+#define I2C_SDA_PIN                             GPIO_NUM_4
+#define I2C_SCL_PIN                             GPIO_NUM_5
+#define I2C_TIMEOUT                             (100 / portTICK_RATE_MS)
+#define I2C_AHT20_ADDRESS                       0x38
 
 
-static int GetHeartRateValue(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
-    static struct __attribute__((packed)) {
-        uint8_t contact;
-        uint8_t heart_rate;
-    } hrm = {
-        .contact = 0x06,
-        .heart_rate = 80
-    };
+// Bluetooth configuration (Environmental Sensing Service)
+#define GATT_ESS_UUID                           0x181A
+#define GATT_ESS_TEMPERATURE_UUID               0x2A6E
+#define GATT_ESS_HUMIDITY_UUID                  0x2A6F
 
-    int rc = os_mbuf_append(ctxt->om, &hrm, sizeof(hrm));
-    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+
+static void SetLedState(bool state) {
+    gpio_set_direction(LED_GPIO_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(LED_GPIO_PIN, state ? 1 : 0);
 }
 
-static int GetBodyLocation(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
-    static const uint8_t chest = 0x01;
+static void WaitMs(unsigned delay) {
+    vTaskDelay(delay / portTICK_PERIOD_MS);
+}
 
-    int rc = os_mbuf_append(ctxt->om, &chest, sizeof(chest));
-    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+
+static int GetTemperature(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
+    // int rc = os_mbuf_append(ctxt->om, ...);
+    // return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    return BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+static int GetHumidity(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
+    // int rc = os_mbuf_append(ctxt->om, ...);
+    // return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    return BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
 static const struct ble_gatt_svc_def kBleServices[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(GATT_HRS_UUID),
+        .uuid = BLE_UUID16_DECLARE(GATT_ESS_UUID),
         .characteristics = (struct ble_gatt_chr_def[])
         { {
-                // characteristic: Heart-rate measurement
-                .uuid = BLE_UUID16_DECLARE(GATT_HRS_MEASUREMENT_UUID),
-                .access_cb = GetHeartRateValue,
+                .uuid = BLE_UUID16_DECLARE(GATT_ESS_TEMPERATURE_UUID),
+                .access_cb = GetTemperature,
                 .flags = BLE_GATT_CHR_F_READ,
             }, {
-                // characteristic: Body sensor location
-                .uuid = BLE_UUID16_DECLARE(GATT_HRS_BODY_SENSOR_LOC_UUID),
-                .access_cb = GetBodyLocation,
+                .uuid = BLE_UUID16_DECLARE(GATT_ESS_HUMIDITY_UUID),
+                .access_cb = GetHumidity,
                 .flags = BLE_GATT_CHR_F_READ,
             }, {
                 0,  // no more characteristics
@@ -76,10 +111,12 @@ static int OnBleGapEvent(struct ble_gap_event *event, void *arg) {
     switch (event->type) {
         case BLE_GAP_EVENT_CONNECT:
             ESP_LOGI("BLE GAP Event", "Connected");
+            SetLedState(true);
             break;
 
         case BLE_GAP_EVENT_DISCONNECT:
             ESP_LOGI("BLE GAP Event", "Disconnected");
+            SetLedState(false);
             StartAdvertisement();
             break;
 
@@ -108,12 +145,57 @@ static void StartAdvertisement(void) {
     ESP_LOGI("BLE", "Advertisement started...");
 }
 
+static void SetDeviceName(const char *device_name) {
+    struct ble_hs_adv_fields fields;
+    memset(&fields, 0, sizeof(fields));
+
+    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+
+    fields.name = (uint8_t*) device_name;
+    fields.name_len = strlen(device_name);
+    fields.name_is_complete = 1;
+
+    if (ble_gap_adv_set_fields(&fields) != 0) {
+        ESP_LOGE("BLE", "Can't configure BLE advertisement fields");
+        return;
+    }
+
+    ble_svc_gap_device_name_set(device_name);
+}
+
 static void StartBleService(void *param) {
     ESP_LOGI("BLE task", "BLE Host Task Started");
 
     nimble_port_run();
     nimble_port_freertos_deinit();
 }
+
+static void InitializeI2C(void) {
+    i2c_config_t conf = {
+        .mode = I2C_MODE_MASTER,
+        .sda_io_num = I2C_SDA_PIN,
+        .scl_io_num = I2C_SCL_PIN,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = I2C_CLK_FREQUENCY,
+    };
+
+    i2c_param_config(I2C_PORT_NUMBER, &conf);
+    i2c_driver_install(I2C_PORT_NUMBER, conf.mode, 0, 0, 0);
+}
+
+static void WriteToTheSensor(uint8_t *data, size_t length) {
+    i2c_master_write_to_device(I2C_PORT_NUMBER, I2C_AHT20_ADDRESS, data, length, I2C_TIMEOUT);
+}
+
+static void ReadFromTheSensor(uint8_t *buffer, size_t length) {
+    i2c_master_read_from_device(I2C_PORT_NUMBER, I2C_AHT20_ADDRESS, buffer, length, I2C_TIMEOUT);
+}
+
+
+
+
+
 
 void app_main(void) {
     // Initialize Non-Volatile Memory
@@ -148,11 +230,14 @@ void app_main(void) {
     // Run BLE
     nimble_port_freertos_init(StartBleService);
 
-    // Make device discoverable
+    SetDeviceName("AHT20 sensor");
     StartAdvertisement();
+
+    InitializeI2C();
+
 
 error:
     while (1) {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        WaitMs(1000);
     };
 }
