@@ -12,7 +12,6 @@ menuconfig:
 
 setup:
 	make setup-idf
-	make setup-flash
 
 setup-light:
 	make setup-idf-light

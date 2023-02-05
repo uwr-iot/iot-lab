@@ -4,8 +4,9 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "esp-idf-v4.4.2/components/bt/host/nimble/esp-hci/include/",
-                "esp-idf-v4.4.2/components/driver/include/"
+                "esp-idf-v4.4.2/components/driver/include/",
+                "esp-idf-v4.4.2/components/esp_event/include",
+                "esp-idf-v4.4.2/components/esp_wifi/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
